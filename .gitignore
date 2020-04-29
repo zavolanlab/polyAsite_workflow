@@ -1,0 +1,62 @@
+###################
+# Temporary files #
+###################
+
+# snakemake associated files
+.snakemake/
+scripts/snakemake/.snakemake.*
+
+# emacs temorary files
+*~
+
+# other temporary files
+\#*\#
+*.swp
+
+# R temporary files
+.RData
+.Rhistory
+
+# jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+####################
+# Real data        #
+####################
+
+# all real data
+samples/
+
+# all atlas data
+atlas/
+
+# all test output data
+# This is specified in separate .gitignore in
+# tests/
+
+# all annotation data
+annotation/
+
+# logs
+*.log
+nohup.out
+logs/
+
+# graphical representations of the snakemake pipeline
+*graph*.png
+*graph*.pdf
+*dag*.png
+
+# Actual configs, design files and run scripts
+# Examples for tests have been created which will be synchronized
+config_*.yaml
+run_*.sh
+pipeline_graph.sh
+samples_*.tsv
+
+#######################
+# Tests and analyses  #
+#######################
+
+# sandbox
+sandbox/

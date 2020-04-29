@@ -1,0 +1,2 @@
+# Edit input files in 'prepare_files_for_search.sh' and run
+# Dependencies: `Rscript`, `bgzip` and `tabix` in $PATH

@@ -1,0 +1,9 @@
+# This file may be used to create an environment using:
+# $ conda create --name snakemake-tutorial -c bioconda --file <this file>
+channels:
+ - bioconda
+ - conda-forge
+ - anaconda
+dependencies:
+ - python=3.5.1
+ - snakemake=4.4.0

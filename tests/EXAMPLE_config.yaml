@@ -1,0 +1,320 @@
+---
+################################################################################
+# 
+# !!!      ATTENTION          !!!
+#
+#
+# This file serves as a template on which fields the config.yaml has to
+# contain. All parameters and paths have to be adjusted according to use case.
+#
+# Use this file as config for the test case, to confirm correct setup of the 
+# pipeline.
+#
+# ##############################################################################
+
+
+################################################################################
+# global settings
+################################################################################
+
+# the results dir, logs and cluster logs location are created based on the
+# genome and organism information
+
+# directory where the samples-related data is stored
+# do NOT change this unless you have a clear reason
+samples_dir: samples
+atlas_dir: atlas
+
+# directory that contains all scripts used during the pipeline
+script_dir: ../scripts
+
+# scripts subdir with small snakemake-specific scripts
+# (this avoids long blocks for the run directive)
+# ATTENTION: This directory has to be relative to the Snakefile,
+# as these scripts are not executed within a Singularity container
+snakemake_script_dir: scripts/snakemake
+
+################################################################################
+# information for the run
+################################################################################
+
+# organism
+organism: HomoSapiens
+organism_name_db: Homo sapiens
+# Genome must not contain '.', as it will serve as key in mongoDB
+genome: GRCh38-96
+# name of the corresponding UCSC genome assembly to show the final tracks
+# (infos on the names can be found here: http://genome.ucsc.edu/cgi-bin/hgGateway)
+ucsc_organism: human
+ucsc_db: hg38
+# download the genome as fasta file
+# and store it as given
+genome_fasta_url: "ftp://ftp.ensembl.org/pub/release-96/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.primary_assembly.fa.gz"
+genome_fasta_raw: ../annotation/Homo_sapiens.GRCh38.96.dna_sm.primary_assembly.fa
+genome_fasta: ../annotation/Homo_sapiens.GRCh38.96.dna_sm.primary_assembly.clean.fa
+# download the genome annotation as gtf file
+# and store it as given
+annotation_dir: ../annotation
+gene_anno_url: "ftp://ftp.ensembl.org/pub/release-96/gtf/homo_sapiens/Homo_sapiens.GRCh38.96.chr_patch_hapl_scaff.gtf.gz"
+gene_annotation: ../annotation/Homo_sapiens.GRCh38.96.chr_patch_hapl_scaff.gtf
+gene_annotation_filtered: ../annotation/Homo_sapiens.GRCh38.96.protein_coding.lincRNA.gtf
+
+# Download chromosome sizes from UCSC for creating custom genome browser tracks
+ucsc_chromSizes_URL: "http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes"
+ucsc_chromSizes_file: ../annotation/Homo_sapiens.GRCh38_UCSC.chrom_sizes
+
+# Name under which the atlas will be published on the website
+# ATTENTION: for each organism, the release name should be unique!
+# Even in the case that only the gene annotation has changed!!
+# Release name must not contain '.', as it will serve as key in mongoDB
+atlas.release_name: xx
+
+# Filename of the design file (mandatory input file)
+atlas.samples_table: EXAMPLE_samples.tsv
+
+# filtered version of the annotation:
+# only transcript with a certain support level and of certain types
+transcript_support_level_id:
+transcript_support_level:
+
+# transcript types to select
+transcript_biotype_id: transcript_type
+transcript_type:
+ - protein_coding
+ - lincRNA
+
+# define the canonical chromosomes and their respective UCSC name. This option was introduced to translate the originally used ENSEMBL chromosome names to UCSC for use in the genome browser tracks. If using UCSC names from the beginning, this translation becomes obsolete. Still kept here as option!
+# Make sure to change chromosome names below in get-3p-ends settings accordingly.
+chromosome_names:
+  1: chr1
+  2: chr2
+  3: chr3
+  4: chr4
+  5: chr5
+  6: chr6
+  7: chr7
+  8: chr8
+  9: chr9
+  10: chr10
+  11: chr11
+  12: chr12
+  13: chr13
+  14: chr14
+  15: chr15
+  16: chr16
+  17: chr17
+  18: chr18
+  19: chr19
+  20: chr20
+  21: chr21
+  22: chr22
+  X: chrX
+  Y: chrY
+  MT: chrM
+
+# url to downloadable data. This will be included in the trackinfo files used to
+# display data in UCSC Genome Browser
+polyasite_download_url: http://yoursite.com/download
+
+
+################################################################################
+### Samples preprocessing
+################################################################################
+
+# poly(A) tail trimming:
+# define the error rate during poly(A) tail trimming
+polyA_trimming_errorRate: 0.1
+# minimum overlap of the "adapter" with the read
+# (1 means: even a single A is trimmed)
+polyA_minOverlap: 1
+
+# get the pattern that needs to be trimmed from the 5' end of reads
+# for samples from the 3'READS protocol
+to_trim_from_5p_3READS: NNNNTT
+to_trim_from_5p_Aseq2: NNNNTTT
+# get the pattern that needs to be trimmed from the 3' end of reads
+# in order to consider them as valid
+to_trim_from_3p_3PSeq: AA
+
+# minimum length after adapter trimming
+min_length: 15
+
+# max number of Ns in read sequence
+maxN: 2
+
+# max fraction of As per read sequence
+maxAcontent: 0.8
+
+# for protocols with sense direction sequencing:
+# define a minimum number of nt that should have been cleaved (either as poly(A)
+# tail or as 3' adapter so that it can be guarenteed that the actual 3' end
+# was reached by the sequencing cycles
+min_sense_strand_shortening: 5
+
+#-------------------------------------------------------------------------------
+# Segemehl mapping
+#-------------------------------------------------------------------------------
+
+segemehl_idx_gen.mem: 70
+segemehl_idx_trx.mem: 30
+segemehl_idx_gen.time: 3
+segemehl_idx_trx.time: 1
+
+segemehl_map_gen.mem: 80
+segemehl_map_trx.mem: 40
+segemehl_map_gen.time: 6
+segemehl_map_trx.time: 6
+
+
+#-------------------------------------------------------------------------------
+# bam2bed
+#-------------------------------------------------------------------------------
+
+bam2bed.total_RAM: 40
+bam2bed.threads: 8
+
+#-------------------------------------------------------------------------------
+# unique mappers filtering 
+#-------------------------------------------------------------------------------
+
+unique_mappers.total_RAM: 10
+
+
+#-------------------------------------------------------------------------------
+# internal priming filtering
+#-------------------------------------------------------------------------------
+
+fetch_seqs.total_RAM: 10
+
+IP.upstream_region: 60
+IP.downstream_region: 10
+
+# restrictions on how many As are allowed;
+# sites with one of the following characteristics are excluded as IP sites
+# total number of As in the above given downstream region:
+IP.total_As: 7
+# consecutive number of As:
+IP.consecutive_As: 6
+# patterns that if they appear directly downstream cause removal of the
+# corresponding site
+IP.downstream_patterns:
+
+IP.downstream_patterns.3READS:
+  - AGAA
+  - AA
+
+#-------------------------------------------------------------------------------
+# get_3p_ends
+#-------------------------------------------------------------------------------
+
+get_3p_ends.total_RAM: 10
+excluded_chr:
+  - MT
+
+female_chr: Y
+
+# minimum number of nt that have to map perfectly directly upstream of the 3' end
+min_3p_align: 4
+
+#-------------------------------------------------------------------------------
+# counting steps
+#-------------------------------------------------------------------------------
+
+mapped_read_nt.total_RAM: 30
+
+
+################################################################################
+# steps to create the full atlas
+################################################################################
+
+# pool_samples
+pool_samples.time: 6
+
+#-------------------------------------------------------------------------------
+# assign poly(A) signals to each 3' end site
+#-------------------------------------------------------------------------------
+
+# the list of poly(A) signals
+# that are annotated for single 3' end processing sites
+# in the region -60 to +10 nt around them
+# According to Gruber et al., 2016, Genome Research.
+polyA_signals:
+  - AATAAA
+  - ATTAAA
+  - TATAAA
+  - AGTAAA
+  - AATACA
+  - CATAAA
+  - AATATA
+  - GATAAA
+  - AATGAA
+  - AATAAT
+  - AAGAAA
+  - ACTAAA
+  - AATAGA
+  - ATTACA
+  - AACAAA
+  - ATTATA
+  - AACAAG
+  - AATAAG
+
+#-------------------------------------------------------------------------------
+# for each sample, define a sample specific cutoff for the support of reads
+# an individual site must have to be trustworthy
+#
+# for this purpose, run a rough clustering of sites from individual samples
+# and filter out 3' end sites expressed not higher than the sample-specific BG
+#-------------------------------------------------------------------------------
+
+# cutoff, how much percent of clusters are required to have a poly(A) signal
+sample.BG_polyAsignal_cutoff: 90
+# regions, up- and downstream, around highly expressed 3' end sites to
+# determine lower expressed sites in order to cluster them to the higher
+# expressed one
+sample.BG_upstream_clustering: 25
+sample.BG_downstream_clustering: 25
+sample.BG_total_RAM: 10
+
+noBG_table.time: 6
+#-------------------------------------------------------------------------------
+# clustering closely spaced 3' ends
+#-------------------------------------------------------------------------------
+# Increasing default memory
+CL.total_RAM: 60
+CL.time: 3
+CL.merge_RAM: 30
+
+# up- and downstream regions to search for sites that get clustered to
+# the current site (similar as above)
+CL.upstream_clustering: 12
+CL.downstream_clustering: 12
+
+
+# merge clusters that are still very close to each other after the initial
+# clustering step
+#
+# define a maximum cluster size
+# merged clusters must not be larger than this size (except they share the same
+# poly(A) signals)
+CL.max_cluster_size: 25
+
+# rescue clusters that are potential internal priming events when the most
+# downsteam 3' end site of this cluster has a minimum distance to the next
+# upstream poly(A) signal -> set this minimum distance here
+CL.min_dist_to_PAS: 15
+
+#-------------------------------------------------------------------------------
+# annotate the location of poly(A) site clusters
+#-------------------------------------------------------------------------------
+
+# poly(A) sites are annotated with respect to a given gene annotation to
+# be located in a region which is:
+# terminal exon, exon, intron, antisense exon, antisense intron,
+# downstream of the terminal exon, antisense upstream of the transcript start,
+# or intergenic
+
+# define the range within which poly(A) sites are either annotated as
+# downstream of the terminal exon or antisense upstream of the transcript start
+ds_range: 1000
+
+...

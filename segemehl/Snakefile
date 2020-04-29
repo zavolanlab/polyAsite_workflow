@@ -1,0 +1,686 @@
+################################################################################
+# SEGEMEHL MAPPING
+#
+# Author: adapted from mir-map by Paula Iborra de Toledo
+# Maintainer: christina.herrmann@unibas.ch
+# Date: 2019-05-01
+# Modified: 2019-05-28
+#
+# This workflow processes appropriate genome and annotation files,
+# performs mapping to genome and transcriptome separately,
+# and finally selects the best mappers.
+#
+# INPUT: transcriptome and genome fasta files, gtf annotation, filtered reads (.fa.gz)
+# OUTPUT: bed.gz of mapped reads, sorted by position
+
+# If used as subworkflow via 'include', don't provide config file!
+#  Configs are specified in config.yaml of main Snakefile!
+# configfile: "segemehl_config.yaml"
+##################################################################################
+
+
+from snakemake.utils import makedirs
+from snakemake.utils import listfiles
+
+import pandas as pd
+import numpy as np
+import string
+import random
+import os
+
+#################################################################################
+# Define input function
+#################################################################################
+
+#-------------------------------------------------------------------------------
+# the valid reads change depending on whether reads are
+# also length filtered
+#-------------------------------------------------------------------------------
+def get_valid_reads(wildcards):
+	if(samples.loc[wildcards.sample, "protocol"] == "A-seq" or
+		samples.loc[wildcards.sample, "protocol"] == "3'-Seq (Mayr)"):
+		return os.path.join(config["samples_dir"],
+			wildcards.sample,
+			wildcards.sample + ".valid_maxLength.fa.gz")
+	else:
+		return os.path.join(config["samples_dir"],
+			wildcards.sample,
+			wildcards.sample + ".valid.fa.gz")
+
+
+
+#################################################################################
+### Local rules
+#################################################################################
+
+localrules: map_complete, trim_fasta, get_exons_gtf, gtftobed, create_header_genome, remove_headers_genome_segemehl, remove_headers_transcriptome_segemehl,cat_mappings, sort_id, convert_to_bam, sort_by_position
+
+samples = pd.read_table(config['atlas.samples_table'], index_col=0, comment='#')
+
+
+#################################################################################
+### Finish rule
+#################################################################################
+
+rule map_complete:
+	input:
+		#idx_transcriptome = os.path.join(config["output_dir"], "transcriptome_index_segemehl.idx"),
+		#idx_genome = os.path.join(config["output_dir"], "genome_index_segemehl.idx"),
+		#exons_bed = os.path.join(config["output_dir"], "exons.bed"),
+		#header = os.path.join(config["output_dir"], "headerOfCollapsedFasta.sam")
+                #maps = expand(os.path.join(config["samples_dir"], 
+                #            "{sample}", 
+                #            "mappingsSorted.bam"), 
+                #            sample = samples.index)
+		bed = expand(os.path.join(config["samples_dir"], 
+				"{sample}", 
+				config['genome'],
+				"{sample}.reads.bed.gz"), 
+				sample = samples.index)
+
+
+#################################################################################
+# Prepare annotations and genome files 
+#################################################################################
+
+#--------------------------------------------------------------------------------
+# Extract transcriptome sequences from genome.
+# -------------------------------------------------------------------------------
+rule extract_transcriptome_seqs:
+	input:
+		fasta = config["genome_fasta"],
+		gtf = config["gene_annotation"]
+	output:
+		fasta = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_transcriptome.fa")
+	params:
+		cluster_log = os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_extract_trx_seqs.cl.log")
+	log:
+		os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_extract_trx_seqs.log")
+	singularity:
+		"docker://zavolab/cufflinks:2.2.1"
+	shell:
+		'''
+		(gffread \
+		-w {output.fasta} \
+		-g {input.fasta} \
+		{input.gtf}) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Trim transcript IDs of FASTA file
+#--------------------------------------------------------------------------------
+rule trim_fasta:
+	##LOCAL##
+	input:
+		fasta = os.path.join(config["annotation_dir"],
+			 config["organism"] + config["genome"] + "_transcriptome.fa"),
+		script = os.path.join(config["script_dir"], "validation_fasta.py")
+	output:
+		fasta = os.path.join(config["annotation_dir"],
+			config["organism"] + config["genome"] + "_transcriptome_idtrim.fa")
+	singularity:
+		"docker://zavolab/python_htseq:3.6.5_0.10.0"
+	log:
+		os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_trim_fasta.log")
+	shell:
+		'''
+		(python {input.script} \
+		--trim \
+		-i {input.fasta} \
+		-o {output.fasta}) \
+		&> {log}
+		'''
+
+
+
+#--------------------------------------------------------------------------------
+# Generate segemehl index for transcripts
+#--------------------------------------------------------------------------------
+rule generate_segemehl_index_transcriptome:
+	input:
+		fasta = os.path.join(config["annotation_dir"], 
+			config["organism"] + config["genome"] + "_transcriptome_idtrim.fa")
+	output:
+		idx = os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_trx_index_segemehl.idx")
+	log:
+		os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_generate_segemehl_index_transcriptome.log")
+	params:
+		cluster_log = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_generate_segemehl_index_transcriptome.cl.log")
+	resources:
+        	mem = config['segemehl_idx_trx.mem'],
+		time = config['segemehl_idx_trx.time']
+	singularity:
+		"docker://zavolab/segemehl:0.2.0"
+	shell:
+		'''
+		(segemehl.x \
+		-x {output.idx} \
+		-d {input.fasta}) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Generate segemehl index for genome
+#--------------------------------------------------------------------------------
+rule generate_segemehl_index_genome:
+	input:
+		sequence = config["genome_fasta"]
+	output:
+		idx = os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "genome_index_segemehl.idx")
+	log:
+		os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "generate_segemehl_index_genome.log")
+	params:
+		cluster_log = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "generate_segemehl_index_genome.cl.log")
+	resources:
+        	mem = config['segemehl_idx_gen.mem'],
+		time = config['segemehl_idx_gen.time']
+	singularity:
+		"docker://zavolab/segemehl:0.2.0"
+	shell:
+		"(segemehl.x \
+		-x {output.idx} \
+		-d {input.sequence}) \
+		&> {log}"
+
+
+#--------------------------------------------------------------------------------
+# GTF file of exons (genomic coordinates)
+#--------------------------------------------------------------------------------
+rule get_exons_gtf:
+	##LOCAL##
+	input:
+		gtf = config["gene_annotation"],
+		script = os.path.join(config["script_dir"], "get_lines_w_pattern.sh")
+
+	output:
+		exons = os.path.join(config["annotation_dir"], 
+					config["organism"] + config["genome"] + "_exons.gtf")
+	log:
+		os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_get_exons_gtf.log")
+	singularity:
+		"docker://ubuntu:18.04"
+	shell:
+		'''
+		(bash {input.script} \
+		-f {input.gtf} \
+		-c 3 \
+		-p exon \
+		-o {output.exons} ) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Convert GTF file of exons to BED file
+#--------------------------------------------------------------------------------
+rule gtftobed:
+	##LOCAL##
+	input:
+		exons = os.path.join(config["annotation_dir"], 
+					config["organism"] + config["genome"] + "_exons.gtf"),
+                script = os.path.join(config["script_dir"], "gtf_exons_bed.1.1.2.R")
+	output:
+		exons = os.path.join(config["annotation_dir"], 
+					config["organism"] + config["genome"] + "_exons.bed")
+	log:
+		os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_gtftobed.log")
+	singularity:
+		"docker://zavolab/r-zavolab:3.5.1"
+	shell:
+		'''
+		(Rscript {input.script} \
+		--gtf {input.exons} \
+		-o {output.exons}) \
+		&> {log}
+		'''
+
+
+
+#--------------------------------------------------------------------------------
+# Create header for SAM file
+#--------------------------------------------------------------------------------
+rule create_header_genome:
+	##LOCAL##
+	input:
+		genome = config["genome_fasta"]
+	output:
+		header = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_headerOfCollapsedFasta.sam")
+	log:
+		os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_create_header_genome.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	shell:
+		'''
+		(samtools dict \
+		-o {output.header} {input.genome}) \
+		&> {log}
+		'''
+
+
+
+##################################################################################
+### Mapping
+##################################################################################
+
+#--------------------------------------------------------------------------------
+# Genome mapping
+#--------------------------------------------------------------------------------
+rule mapping_genome_segemehl:
+	input:
+		reads = get_valid_reads,
+		genome = config["genome_fasta"],
+		idx = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "genome_index_segemehl.idx")
+	output:
+		gmap =  os.path.join(config["samples_dir"], 
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.genome_mapped.sam")
+	log:
+		os.path.join(config["samples_dir"], 
+					"logs",
+					"segemehl",
+					"{sample}_segemehl_genome.log")
+	params:
+		cluster_log = os.path.join(config["samples_dir"],
+					"logs",
+					"cluster_logs",
+                                   	"{sample}_segemehl_gen.log")
+	resources:
+        	mem = config['segemehl_map_gen.mem'],
+		time = config['segemehl_map_gen.time']
+	threads:	8
+	singularity:
+		"docker://zavolab/segemehl:0.2.0"
+	shell:
+		'''
+		segemehl.x \
+		-i {input.idx} \
+		-d {input.genome} \
+		-t {threads} \
+		-q {input.reads} \
+		-outfile {output.gmap}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Remove mapping header
+#--------------------------------------------------------------------------------
+rule remove_headers_genome_segemehl:
+	##LOCAL##
+	input:
+		 gmap =  os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.genome_mapped.sam")
+	output:
+	         gmap =  os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.genome_mapped_noheader.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "rem_header_gen",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	shell:
+		'''
+		samtools view \
+		{input.gmap} \
+		> {output.gmap} \
+		2> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Transcriptome mapping
+#--------------------------------------------------------------------------------
+rule mapping_transcriptome_segemehl:
+	input:
+		reads = get_valid_reads,
+		transcriptome = os.path.join(config["annotation_dir"],
+				config["organism"] + config["genome"] + "_transcriptome_idtrim.fa"),
+		idx = os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_trx_index_segemehl.idx")
+	output:
+                tmap = os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.transcriptome_mapped.sam")
+	log:
+		os.path.join(config["samples_dir"], 
+					"logs",
+					"segemehl",
+					"{sample}_segemehl_trx.log")
+	params:
+		cluster_log = os.path.join(config["samples_dir"],
+					"logs",
+					"cluster_logs",
+                                   	"{sample}_segemehl_trx.log"),
+		queue = lambda wildcards: "1day" if samples.loc[wildcards.sample, "protocol"]=="PAPERCLIP" else "6hours"
+	resources:
+        	mem = config['segemehl_map_trx.mem'],
+		time = lambda wildcards: 20 if samples.loc[wildcards.sample, "protocol"]=="PAPERCLIP" else config['segemehl_map_trx.time']
+	threads:	8
+	singularity:
+		"docker://zavolab/segemehl:0.2.0"
+	shell:
+		'''
+		segemehl.x \
+		-i {input.idx} \
+		-d {input.transcriptome} \
+		-t {threads} \
+		-q {input.reads} \
+		-outfile {output.tmap}
+		'''	
+
+#--------------------------------------------------------------------------------
+# Remove mapping header
+#--------------------------------------------------------------------------------
+rule remove_headers_transcriptome_segemehl:
+	##LOCAL##
+	input:
+                 tmap =  os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.transcriptome_mapped.sam")
+	output:
+                 tmap =  os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.transcriptome_mapped_noheader.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "rem_header_trx",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	shell:
+		'''
+		samtools view \
+		{input.tmap} \
+		> {output.tmap} \
+		2> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Transcriptome to genome mapping
+#--------------------------------------------------------------------------------
+rule trans_to_gen:
+	input:
+		tmap =  os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.transcriptome_mapped_noheader.sam"),
+		script = os.path.join(config["script_dir"],"sam_trx_to_sam_gen.pl"),
+		exons = os.path.join(config["annotation_dir"], 
+				config["organism"] + config["genome"] + "_exons.bed")
+	output:
+		genout = os.path.join(config["samples_dir"],
+                            	"{sample}",
+                                 config['genome'],
+                            	"{sample}.trx2gen.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "trans_to_gen",
+                                        "{sample}.log")
+	params:
+                cluster_log = os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "cluster_logs",
+                                        "{sample}.log")	
+	singularity:
+		"docker://zavolab/perl:5.28"
+
+	shell:
+		'''
+		(perl {input.script} \
+		--in {input.tmap} \
+		--exons {input.exons} \
+		--out {output.genout}) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Concatenate genome and transcriptome mappings, add header
+#--------------------------------------------------------------------------------
+rule cat_mappings:
+	##LOCAL##
+	input:
+		header = os.path.join(config["annotation_dir"],
+                                config["organism"] + config["genome"] + "_headerOfCollapsedFasta.sam"),
+		t2gmap = os.path.join(config["samples_dir"], 
+				"{sample}", 
+                                 config['genome'],
+				"{sample}.trx2gen.sam"),
+		gmap =  os.path.join(config["samples_dir"],
+				"{sample}",
+                                 config['genome'],
+				"{sample}.genome_mapped_noheader.sam")
+	output:
+		catmaps = os.path.join(config["samples_dir"], 
+				"{sample}",
+                                 config['genome'],
+				"{sample}.merged_mapped.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "cat_mappings",
+                                        "{sample}.log")
+	shell:
+		'''
+		(cat {input.header} \
+		{input.t2gmap} \
+		{input.gmap} \
+		> {output.catmaps}) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Sort mapped file by ids
+#--------------------------------------------------------------------------------
+rule sort_id:
+	##LOCAL##
+	input:
+		sam = os.path.join(config["samples_dir"], 
+                            	"{sample}", 
+                                 config['genome'],
+                            	"{sample}.merged_mapped.sam")
+	output:
+		sorted = os.path.join(config["samples_dir"], 
+                            	"{sample}", 
+                                 config['genome'],
+                            	"{sample}.mapped_sorted.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "mapped_sorted",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	shell:
+		'''
+		(samtools sort \
+		-n \
+		-o {output.sorted} \
+		{input.sam}) \
+		&> {log}
+		''' 
+
+#--------------------------------------------------------------------------------
+# Remove inferior mappings (and duplicates and multimappers)
+#--------------------------------------------------------------------------------
+rule remove_inferiors:
+	''' Without --keep-mm only unique mappers will be kept,
+	no extra rule for selecting unique mappers necessary
+	'''
+	input:
+		sorted = os.path.join(config["samples_dir"], 
+				"{sample}", 
+                                 config['genome'],
+				"{sample}.mapped_sorted.sam"),
+		script = os.path.join(config["script_dir"],
+				"sam_remove_duplicates_inferior_alignments_multimappers.1_5.pl")
+	output:		
+		remove_inf = os.path.join(config["samples_dir"], 
+				"{sample}", 
+                                 config['genome'],
+				"{sample}.remove_inferiors.sam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "remove_inferiors",
+                                        "{sample}.log")
+	params:
+                cluster_log = os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "cluster_logs",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/perl:5.28"
+	shell:
+		'''
+		(perl {input.script} \
+		--print-header \
+		--keep-mm \
+		--in {input.sorted} \
+		--out {output.remove_inf}) \
+		&> {log}
+		'''
+
+#--------------------------------------------------------------------------------
+# Convert to BAM
+#--------------------------------------------------------------------------------
+rule convert_to_bam:
+	##LOCAL##
+	input:
+		remove_inf = os.path.join(config["samples_dir"],
+                                "{sample}",
+                                 config['genome'],
+                                "{sample}.remove_inferiors.sam")
+	output:
+		bam = os.path.join(config["samples_dir"], 
+				"{sample}", 
+                                 config['genome'],
+				"{sample}.mapped_clean.bam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "sam2bam",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	shell:
+		'''
+		(samtools view \
+		-b {input.remove_inf} \
+		> {output.bam}) \
+		&> {log}
+		'''
+
+
+#--------------------------------------------------------------------------------
+# Sort by position
+#--------------------------------------------------------------------------------
+rule sort_by_position:
+	##LOCAL##
+	input:
+		bam = os.path.join(config["samples_dir"],  
+                                "{sample}", 
+                                 config['genome'],
+                                "{sample}.mapped_clean.bam")
+	output:
+		bam = os.path.join(config["samples_dir"], 
+				"{sample}", 
+                                 config['genome'],
+				"{sample}.by_position.bam")
+	log:
+                os.path.join(config["samples_dir"],
+                                        "logs",
+                                        "by_position",
+                                        "{sample}.log")
+	singularity:
+		"docker://zavolab/samtools:1.8"	
+	shell:
+		'''
+		(samtools sort \
+		{input.bam} \
+		> {output.bam}) \
+		&> {log}
+		'''
+
+
+
+#-------------------------------------------------------------------------------
+# convert the BAM file into BED format
+#-------------------------------------------------------------------------------
+rule bam2bed:
+	#Singularity needed: samtools v1.8, python 2.7.11 or later##
+	#check python modules: optparse, re, itertools, multiprocessing##
+	#Singularity provided: samtools:1.8, not tested##
+	input:
+		bam = os.path.join(config["samples_dir"],
+				"{sample}",
+                                 config['genome'],
+				"{sample}.by_position.bam"),
+		script = os.path.join( config["script_dir"],
+					"rs-bam2bed.py")
+	output:
+		reads_bed = os.path.join(config["samples_dir"],
+				"{sample}",
+				config['genome'],
+				"{sample}.reads.bed.gz")
+	singularity:
+		"docker://zavolab/samtools:1.8"
+	log:
+		os.path.join(config["samples_dir"],
+				"logs",
+				"bam2bed",
+				"{sample}.log")
+	params:
+		cluster_log = os.path.join(config["samples_dir"],
+				"logs",
+				"cluster_logs",
+				"{sample}.log")
+	resources:
+		mem = config['bam2bed.total_RAM']
+	threads: 
+		config['bam2bed.threads']
+	
+	shell:
+		'''
+		(samtools view {input.bam} \
+		| python {input.script} \
+		--processors {threads} \
+		| gzip > {output.reads_bed}) 2>> {log}
+		'''
+
+
+
+
+
+

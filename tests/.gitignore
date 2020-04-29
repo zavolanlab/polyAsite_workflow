@@ -1,0 +1,20 @@
+# Ignore everything
+*
+
+# But not the gitignore
+!.gitignore
+
+# But not these files
+!EXAMPLE_config.yaml
+!EXAMPLE_pipeline_graph.sh
+!EXAMPLE_run_clustering.sh
+!EXAMPLE_run_preprocessing.sh
+!EXAMPLE_samples.tsv
+
+# And also not the example files
+# Therefore allow to descend into directories
+!*/
+
+# And allow the input files only
+
+!*/*/*.fastq.gz

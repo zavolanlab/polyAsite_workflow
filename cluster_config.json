@@ -1,0 +1,93 @@
+{
+    "__default__":
+    {
+	"queue":"6hours",
+	"time": "02:00:00",
+	"threads":"1",
+	"mem":"5G"
+    },
+    "trim_adapter_se":
+    {
+        "time": "{resources.time}:00:00"
+    },
+    "remove_polyAtail":
+    {
+        "time": "{resources.time}:00:00"
+    },
+    "generate_segemehl_index_transcriptome":
+    {
+        "queue":"6hours",
+        "time": "{resources.time}:00:00",
+        "mem": "{resources.mem}G"
+    },
+    "generate_segemehl_index_genome":
+    {
+        "queue":"6hours",
+        "threads": "{threads}",
+        "time": "{resources.time}:00:00",
+        "mem": "{resources.mem}G"
+    },
+    "mapping_genome_segemehl":
+    {
+        "queue":"6hours",
+        "threads": "{threads}",
+        "time": "{resources.time}:00:00",
+        "mem": "{resources.mem}G"
+    },
+    "mapping_transcriptome_segemehl":
+    {
+        "queue":"{params.queue}",
+        "threads": "{threads}",
+        "time": "{resources.time}:00:00",
+        "mem": "{resources.mem}G"
+    },
+    "bam2bed":
+    {
+	"threads": "{threads}",
+	"mem": "{resources.mem}G"
+    },
+    "mapped_read_cnt":
+    {
+        "mem": "{resources.mem}G"
+    },
+    "select_by_edit_distance":
+    {
+        "mem": "{resources.mem}G"
+    },
+    "select_unique_mappers":
+    {
+        "mem": "{resources.mem}G"
+    },
+    "get_3p_ends_strict":
+    {
+        "mem": "{resources.mem}G"
+    },
+    "pool_samples":
+    {
+        "mem": "{resources.mem}G",
+        "time": "{resources.time}:00:00"
+    },
+    "sample_specific_bg":
+    {
+        "mem": "{resources.mem}G"
+    },
+    "create_noBG_3pSites_table":
+    {
+        "mem": "{resources.mem}G",
+        "time": "{resources.time}:00:00"
+    },
+    "assign_polyA_signals":
+    {
+        "time": "06:00:00"
+    },
+    "cluster_sites":
+    {
+        "mem": "{resources.mem}G",
+        "time": "{resources.time}:00:00"
+    },
+    "merge_clusters":
+    {
+        "mem": "{resources.mem}G",
+        "time": "{resources.time}:00:00"
+    }
+}
